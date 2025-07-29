@@ -39,6 +39,10 @@ export async function request(config: HttpRequest): Promise<HttpResponse> {
       signal: config.signal || controller.signal
     });
     
+    if (!response) {
+      throw new Error('Request failed - no response received');
+    }
+    
     const responseBody = await response.text();
     const duration = Date.now() - startTime;
     
@@ -52,6 +56,24 @@ export async function request(config: HttpRequest): Promise<HttpResponse> {
       timestamp: new Date(),
       duration
     };
+  } catch (error) {
+    // Handle timeout and other errors
+    const duration = Date.now() - startTime;
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        url: config.url,
+        status: 408,
+        statusText: 'Request Timeout',
+        headers: {},
+        body: '',
+        ok: false,
+        timestamp: new Date(),
+        duration
+      };
+    }
+    
+    throw error;
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -135,10 +157,20 @@ export function buildUrl(baseUrl: string, path: string, params?: Record<string, 
     return path;
   }
   
+  // Handle empty base URL - preserve leading slash
+  if (!baseUrl) {
+    const fullUrl = path.startsWith('/') ? path : `/${path}`;
+    if (params && Object.keys(params).length > 0) {
+      const searchParams = new URLSearchParams(params);
+      return `${fullUrl}?${searchParams.toString()}`;
+    }
+    return fullUrl;
+  }
+  
   // Combine base URL and path
   const base = baseUrl.replace(/\/$/, '');
   const cleanPath = path.replace(/^\//, '');
-  const fullUrl = base ? `${base}/${cleanPath}` : cleanPath;
+  const fullUrl = `${base}/${cleanPath}`;
   
   // Add query parameters
   if (params && Object.keys(params).length > 0) {
@@ -246,7 +278,7 @@ export function extractFilename(response: HttpResponse): string | null {
   }
   
   const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-  if (match && match[1]) {
+  if (match?.[1]) {
     return match[1].replace(/['"]/g, '');
   }
   
@@ -278,7 +310,7 @@ export async function retryRequest(
       
       if (attempt < maxRetries) {
         // Exponential backoff: 100ms, 200ms, 400ms, etc.
-        const delay = baseDelay * Math.pow(2, attempt);
+        const delay = baseDelay * 2 ** attempt;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }

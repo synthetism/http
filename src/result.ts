@@ -120,8 +120,7 @@ export class Result<T> {
   match<U>(onSuccess: (value: T) => U, onFailure: (error: string, cause?: Error | unknown) => U): U {
     if (this.isSuccess) {
       return onSuccess(this._value as T);
-    } else {
-      return onFailure(this._error as string, this._errorCause);
     }
+    return onFailure(this._error as string, this._errorCause);
   }
 }

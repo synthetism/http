@@ -404,7 +404,7 @@ I TEACH:
         
         if (attempt < this.props.retries) {
           // Exponential backoff: 100ms, 200ms, 400ms, etc.
-          const delay = 100 * Math.pow(2, attempt);
+          const delay = 100 * 2 ** attempt;
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }

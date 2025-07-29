@@ -97,10 +97,10 @@ describe('HTTP Pure Functions - Core Operations', () => {
     });
 
     it('should handle request timeout', async () => {
-      // Mock a long-running request
-      mockFetch.mockImplementation(() => 
-        new Promise(resolve => setTimeout(resolve, 2000))
-      );
+      // Mock fetch to simulate abort behavior
+      mockFetch.mockImplementation(() => {
+        return Promise.reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+      });
 
       const response = await request({
         url: 'https://api.example.com/slow',
@@ -108,8 +108,10 @@ describe('HTTP Pure Functions - Core Operations', () => {
         timeout: 100 // Very short timeout
       });
 
-      // Should complete without throwing (timeout handled internally)
-      expect(response).toBeDefined();
+      // Should return timeout response instead of throwing
+      expect(response.status).toBe(408);
+      expect(response.statusText).toBe('Request Timeout');
+      expect(response.ok).toBe(false);
     });
   });
 
@@ -425,14 +427,16 @@ describe('HTTP Pure Functions - Advanced Operations', () => {
     it('should use custom base delay', async () => {
       const requestFn = vi.fn()
         .mockRejectedValueOnce(new Error('Error 1'))
-        .mockRejectedValueOnce(new Error('Error 2'));
+        .mockRejectedValueOnce(new Error('Error 2'))
+        .mockRejectedValue(new Error('Persistent error'));
 
       const startTime = Date.now();
-      await expect(retryRequest(requestFn, 2, 50)).rejects.toThrow();
+      await expect(retryRequest(requestFn, 2, 50)).rejects.toThrow('Persistent error');
       const duration = Date.now() - startTime;
 
       // Should have waited at least 50ms + 100ms (exponential backoff)
       expect(duration).toBeGreaterThan(140);
+      expect(requestFn).toHaveBeenCalledTimes(3); // Initial + 2 retries
     });
   });
 
@@ -488,6 +492,10 @@ describe('HTTP Pure Functions - Advanced Operations', () => {
   });
 
   describe('Performance & Concurrency', () => {
+    beforeEach(() => {
+      mockFetch.mockClear();
+    });
+
     it('should handle concurrent requests', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -507,6 +515,8 @@ describe('HTTP Pure Functions - Advanced Operations', () => {
       responses.forEach(response => {
         expect(response.status).toBe(200);
       });
+      
+      // Each GET request should call mockFetch once
       expect(mockFetch).toHaveBeenCalledTimes(10);
     });
 
