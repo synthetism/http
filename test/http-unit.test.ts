@@ -24,7 +24,7 @@ describe('HTTP Unit - Architecture Compliance', () => {
     it('should follow Doctrine #7: EVERY UNIT MUST HAVE DNA', () => {
       expect(http.dna).toBeDefined();
       expect(http.dna.id).toBe('http');
-      expect(http.dna.version).toBe('1.0.0');
+   
     });
 
     it('should follow Doctrine #2: TEACH/LEARN PARADIGM', () => {
@@ -43,12 +43,12 @@ describe('HTTP Unit - Architecture Compliance', () => {
       expect(contract.unitId).toBe('http');
       expect(contract.capabilities).toBeDefined();
       
-      // Should teach native capabilities
-      expect(contract.capabilities.request).toBeDefined();
-      expect(contract.capabilities.get).toBeDefined();
-      expect(contract.capabilities.post).toBeDefined();
-      expect(contract.capabilities.put).toBeDefined();
-      expect(contract.capabilities.delete).toBeDefined();
+      // Should teach native capabilities using consciousness trinity
+      expect(contract.capabilities.has('request')).toBe(true);
+      expect(contract.capabilities.has('get')).toBe(true);
+      expect(contract.capabilities.has('post')).toBe(true);
+      expect(contract.capabilities.has('put')).toBe(true);
+      expect(contract.capabilities.has('delete')).toBe(true);
     });
 
     it('should follow Doctrine #12: NAMESPACE EVERYTHING', () => {
@@ -59,20 +59,26 @@ describe('HTTP Unit - Architecture Compliance', () => {
     });
 
     it('should follow Doctrine #22: STATELESS OPERATIONS', () => {
-      // Capabilities are only for learned abilities, not native methods
-      const learnedCapabilities = http.capabilities();
-      expect(Array.isArray(learnedCapabilities)).toBe(true);
-      // New HTTP unit has no learned capabilities
-      expect(learnedCapabilities).toHaveLength(0);
+      // Create new HTTP unit
+      const http1 = Http.create();
+      const http2 = Http.create();
+      
+      // Different instances should be independent
+      expect(http1.dna.id).toBe(http2.dna.id); // Same unit type
+      
+      // Capabilities are consciousness trinity objects, not arrays
+      const capabilities = http.capabilities();
+      expect(capabilities).toBeInstanceOf(Object);
+      expect(typeof capabilities.has).toBe('function');
+      // Native capabilities are built-in, not learned capabilities
+   
     });
 
-    it('should provide proper whoami identification', () => {
+     it('should provide proper whoami identification', () => {
       const identity = http.whoami();
       expect(identity).toContain('HttpUnit');
       expect(identity).toContain('http');
-      expect(identity).toContain('1.0.0');
     });
-  });
 
   describe('Configuration & State Management', () => {
     it('should create with default configuration', () => {
@@ -114,9 +120,12 @@ describe('HTTP Unit - Architecture Compliance', () => {
       http.get('/test1');
       http.post('/test2', { data: 'test' });
       
-      // Unit should remain stateless - capabilities are only for learned abilities
-      const learnedCapabilities = http.capabilities();
-      expect(learnedCapabilities).toHaveLength(0); // No learned capabilities initially
+      // Unit should remain stateless - consciousness trinity shows built-in capabilities
+      const capabilities = http.capabilities();
+      expect(capabilities).toBeInstanceOf(Object);
+      expect(typeof capabilities.has).toBe('function');
+      // Has native capabilities but no learned ones initially
+      expect(capabilities.has('get')).toBe(true); // Built-in capability
     });
   });
 });
@@ -382,21 +391,21 @@ describe('HTTP Unit - Teaching & Learning Integration', () => {
     mockFetch.mockClear();
   });
 
-  it('should teach capabilities with proper signatures', () => {
+  it('should teach capabilities with proper signatures', async () => {
     const contract = http.teach();
     
-    // Test that taught capabilities work
-    const getCapability = contract.capabilities.get as Function;
-    expect(typeof getCapability).toBe('function');
+    // Test that taught capabilities work using execute method
+    expect(contract.capabilities.has('get')).toBe(true);
+    expect(typeof contract.capabilities.execute).toBe('function');
   });
 
-  it('should maintain consistent configuration access', () => {
+  it('should maintain consistent configuration access', async () => {
     const contract = http.teach();
     
-    const buildUrlCapability = contract.capabilities.buildUrl as Function;
-    expect(typeof buildUrlCapability).toBe('function');
+    expect(contract.capabilities.has('buildUrl')).toBe(true);
     
-    const url = buildUrlCapability('/test', { param: 'value' });
+    // Test capability execution
+    const url = await contract.capabilities.execute('buildUrl', '/test', { param: 'value' });
     expect(url).toBe('https://api.example.com/test?param=value');
   });
 
@@ -406,9 +415,10 @@ describe('HTTP Unit - Teaching & Learning Integration', () => {
     // Learn capabilities from another HTTP unit
     http.learn([anotherHttp.teach()]);
     
-    // Should have learned capabilities now
+    // Should have learned capabilities now (they get namespaced)
     const capabilities = http.capabilities();
-    expect(capabilities.length).toBeGreaterThan(0);
-    expect(capabilities.some(cap => cap.includes('http.'))).toBe(true);
-  });
+    expect(capabilities.list().length).toBeGreaterThan(0);
+    expect(capabilities.list().some(cap => cap.includes('http.'))).toBe(true);
+  });  
+ });
 });

@@ -19,7 +19,17 @@
  * @follows Unit Architecture Doctrine v1.0.6
  */
 
-import { Unit, createUnitSchema, type UnitProps, type TeachingContract } from '@synet/unit';
+import { 
+  Unit, 
+  type UnitProps, 
+  createUnitSchema, 
+  type TeachingContract,
+  type UnitCore,
+  Capabilities,
+  Schema,
+  Validator
+} from '@synet/unit';
+
 import { Result } from './result';
 
 // Doctrine #13: TYPE HIERARCHY CONSISTENCY (Config → Props → State → Output)
@@ -88,6 +98,7 @@ export interface RequestResult {
   readonly timestamp: Date;
 }
 
+const VERSION = '1.0.1';
 /**
  * HTTP Implementation
  * 
@@ -101,14 +112,187 @@ export class Http extends Unit<HttpProps> {
     super(props);
   }
 
-  // Doctrine #4: CREATE NOT CONSTRUCT (static create with validation)
+  protected build(): UnitCore {
+    const capabilities = Capabilities.create(this.dna.id, {
+      // Native HTTP capabilities only - wrapped for unknown[] compatibility
+      request: (...args: unknown[]) => this.request(args[0] as HttpRequest),
+      get: (...args: unknown[]) => this.get(args[0] as string, args[1] as Partial<HttpRequest>),
+      post: (...args: unknown[]) => this.post(args[0] as string, args[1] as string | object, args[2] as Partial<HttpRequest>),
+      put: (...args: unknown[]) => this.put(args[0] as string, args[1] as string | object, args[2] as Partial<HttpRequest>),
+      delete: (...args: unknown[]) => this.delete(args[0] as string, args[1] as Partial<HttpRequest>),
+      
+      // Utility capabilities
+      buildUrl: (...args: unknown[]) => this.buildUrl(args[0] as string, args[1] as Record<string, string>),
+      isOnline: (...args: unknown[]) => this.isOnline()
+    });
+
+    const schema = Schema.create(this.dna.id, {
+      request: {
+        name: 'request',
+        description: 'Execute HTTP request with full configuration',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Request URL' },
+            method: { type: 'string', description: 'HTTP method', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] },
+            headers: { type: 'object', description: 'Request headers' },
+            body: { type: 'string', description: 'Request body' },
+            timeout: { type: 'number', description: 'Request timeout in ms' }
+          },
+          required: ['url']
+        },
+        response: {
+          type: 'object',
+          properties: {
+            response: { type: 'object', description: 'HTTP response object' },
+            parsed: { type: 'object', description: 'Parsed response data' },
+            requestId: { type: 'string', description: 'Unique request identifier' },
+            timestamp: { type: 'string', description: 'Request timestamp' }
+          },
+          required: ['response', 'requestId', 'timestamp']
+        }
+      },
+      get: {
+        name: 'get',
+        description: 'Execute GET request with automatic JSON parsing',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Request URL' },
+            options: { type: 'object', description: 'Additional request options' }
+          },
+          required: ['url']
+        },
+        response: {
+          type: 'object',
+          properties: {
+            response: { type: 'object', description: 'HTTP response object' },
+            parsed: { type: 'object', description: 'Parsed response data' },
+            requestId: { type: 'string', description: 'Unique request identifier' },
+            timestamp: { type: 'string', description: 'Request timestamp' }
+          },
+          required: ['response', 'requestId', 'timestamp']
+        }
+      },
+      post: {
+        name: 'post',
+        description: 'Execute POST request with body serialization',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Request URL' },
+            data: { type: 'object', description: 'Request body data' },
+            options: { type: 'object', description: 'Additional request options' }
+          },
+          required: ['url']
+        },
+        response: {
+          type: 'object',
+          properties: {
+            response: { type: 'object', description: 'HTTP response object' },
+            parsed: { type: 'object', description: 'Parsed response data' },
+            requestId: { type: 'string', description: 'Unique request identifier' },
+            timestamp: { type: 'string', description: 'Request timestamp' }
+          },
+          required: ['response', 'requestId', 'timestamp']
+        }
+      },
+      put: {
+        name: 'put',
+        description: 'Execute PUT request for updates',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Request URL' },
+            data: { type: 'object', description: 'Request body data' },
+            options: { type: 'object', description: 'Additional request options' }
+          },
+          required: ['url']
+        },
+        response: {
+          type: 'object',
+          properties: {
+            response: { type: 'object', description: 'HTTP response object' },
+            parsed: { type: 'object', description: 'Parsed response data' },
+            requestId: { type: 'string', description: 'Unique request identifier' },
+            timestamp: { type: 'string', description: 'Request timestamp' }
+          },
+          required: ['response', 'requestId', 'timestamp']
+        }
+      },
+      delete: {
+        name: 'delete',
+        description: 'Execute DELETE request for removal',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Request URL' },
+            options: { type: 'object', description: 'Additional request options' }
+          },
+          required: ['url']
+        },
+        response: {
+          type: 'object',
+          properties: {
+            response: { type: 'object', description: 'HTTP response object' },
+            parsed: { type: 'object', description: 'Parsed response data' },
+            requestId: { type: 'string', description: 'Unique request identifier' },
+            timestamp: { type: 'string', description: 'Request timestamp' }
+          },
+          required: ['response', 'requestId', 'timestamp']
+        }
+      },
+      buildUrl: {
+        name: 'buildUrl',
+        description: 'Build complete URL with query parameters',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'URL path' },
+            params: { type: 'object', description: 'Query parameters' }
+          },
+          required: ['path']
+        },
+        response: {
+          type: 'string'
+        }
+      },
+      isOnline: {
+        name: 'isOnline',
+        description: 'Check network connectivity',
+        parameters: {
+          type: 'object',
+          properties: {}
+        },
+        response: {
+          type: 'boolean'
+        }
+      }
+    });
+
+    const validator = Validator.create({
+      unitId: this.dna.id,
+      capabilities,
+      schema,
+      strictMode: false
+    });
+
+    return { capabilities, schema, validator };
+  }
+
+    // Consciousness Trinity Access
+  capabilities(): Capabilities { return this._unit.capabilities; }
+  schema(): Schema { return this._unit.schema; }
+  validator(): Validator { return this._unit.validator; }
+
+
   static create(config: HttpConfig = {}): Http {
-    // Doctrine #3: PROPS CONTAIN EVERYTHING (validate and transform config to props)
+   
     const props: HttpProps = {
       // Doctrine #7: EVERY UNIT MUST HAVE DNA
       dna: createUnitSchema({ 
         id: 'http', 
-        version: '1.0.0' 
+        version: VERSION 
       }),
       baseUrl: config.baseUrl || '',
       timeout: config.timeout || 30000,
@@ -189,24 +373,7 @@ I TEACH:
   // Doctrine #2: TEACH/LEARN PARADIGM (every unit must teach)
   // Doctrine #9: ALWAYS TEACH (explicit capability binding)
   // Doctrine #19: CAPABILITY LEAKAGE PREVENTION (teach only native capabilities)
-  teach(): TeachingContract {
-    return {
-      // Doctrine #12: NAMESPACE EVERYTHING (unitId for namespacing)
-      unitId: this.dna.id,
-      capabilities: {
-        // Native HTTP capabilities only - wrapped for unknown[] compatibility
-        request: ((...args: unknown[]) => this.request(args[0] as HttpRequest)) as (...args: unknown[]) => unknown,
-        get: ((...args: unknown[]) => this.get(args[0] as string, args[1] as Partial<HttpRequest>)) as (...args: unknown[]) => unknown,
-        post: ((...args: unknown[]) => this.post(args[0] as string, args[1] as string | object, args[2] as Partial<HttpRequest>)) as (...args: unknown[]) => unknown,
-        put: ((...args: unknown[]) => this.put(args[0] as string, args[1] as string | object, args[2] as Partial<HttpRequest>)) as (...args: unknown[]) => unknown,
-        delete: ((...args: unknown[]) => this.delete(args[0] as string, args[1] as Partial<HttpRequest>)) as (...args: unknown[]) => unknown,
-        
-        // Utility capabilities
-        buildUrl: ((...args: unknown[]) => this.buildUrl(args[0] as string, args[1] as Record<string, string>)) as (...args: unknown[]) => unknown,
-        isOnline: ((...args: unknown[]) => this.isOnline()) as (...args: unknown[]) => unknown
-      }
-    };
-  }
+
 
   // Doctrine #14: ERROR BOUNDARY CLARITY (Result for complex operations)
 
@@ -449,6 +616,15 @@ I TEACH:
   // Standard unit identification
   whoami(): string {
     return `HttpUnit[${this.dna.id}@${this.dna.version}]`;
+  }
+
+  teach(): TeachingContract {
+    return {
+      unitId: this.props.dna.id,
+      capabilities: this._unit.capabilities,
+      schema: this._unit.schema,
+      validator: this._unit.validator
+    };
   }
 
   // JSON serialization (no sensitive data exposed)

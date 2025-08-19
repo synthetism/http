@@ -1,6 +1,6 @@
 {
   "name": "@synet/http",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Built for both Unit-based composition and serverless deployment.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -50,6 +50,6 @@
   "homepage": "https://synthetism.ai",
   "license": "MIT",
   "dependencies": {
-    "@synet/unit": "^1.0.6"
+    "@synet/unit": "^1.1.0"
   }
 }
