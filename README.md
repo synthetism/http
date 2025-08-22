@@ -9,7 +9,7 @@
    \ \_\ \_\ \ \_\   \ \_\ \ \_\           \ \_____\ \_\ \_\ \_\ \__\
     \/_/\/_/  \/_/    \/_/  \/_/            \/_____/\/_/\/_/\/_/\/__/
                                                                                   
-version: 1.0.1                                                   
+version: 1.0.2                                                   
 ```
 
 Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Built for both Unit-based composition and serverless deployment.
@@ -17,12 +17,12 @@ Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Bui
 ## Features
 
 -  **Unit Architecture Compliant** - Teaching/learning contracts with capability composition
--  **Zero Dependencies** - Uses native fetch API (Node.js 18+ / Browser)
--  **Cross-Platform** - Browser, Node.js, Cloudflare Workers, Vercel Edge
+- **Cross-Platform** - Browser, Node.js, Cloudflare Workers, Vercel Edge
 - **Type-Safe** - Full TypeScript support with comprehensive types
 - **Result Pattern** - Explicit error handling for complex operations
 - **Pure Functions** - Serverless-ready stateless operations
 - **Built-in Retry** - Exponential backoff retry logic
+- **Proxy Support** - HTTP/SOCKS5 proxy via undici (Node.js) 
 - **Multiple Patterns** - Unit Architecture + Pure Functions
 
 ## Quick Start
@@ -203,6 +203,108 @@ const response = await retryRequest(
 );
 ```
 
+## Proxy Support
+
+**New in v1.0.2** - Full HTTP/SOCKS5 proxy support via undici integration.
+
+### Basic Proxy Usage
+
+```typescript
+import { Http, type ProxyConnection } from '@synet/http';
+
+// Create HTTP unit
+const http = Http.create({
+  baseUrl: 'https://api.example.com'
+});
+
+// Define proxy connection
+const proxy: ProxyConnection = {
+  id: 'my-proxy',
+  host: 'proxy.example.com',
+  port: 8080,
+  username: 'user123',
+  password: 'pass456',
+  protocol: 'http',
+  country: 'us'
+};
+
+// Request with proxy
+const result = await http.request({
+  url: '/data',
+  method: 'GET',
+  proxy
+});
+
+if (result.isSuccess) {
+  console.log('Response via proxy:', result.value.parsed);
+}
+```
+
+### Proxy Configuration
+
+```typescript
+interface ProxyConnection {
+  readonly id: string;           // Unique proxy identifier
+  readonly host: string;         // Proxy hostname
+  readonly port: number;         // Proxy port
+  readonly username?: string;    // Proxy username (optional)
+  readonly password?: string;    // Proxy password (optional)
+  readonly protocol: 'http' | 'socks5'; // Proxy protocol
+  readonly country?: string;     // Proxy country code (optional)
+}
+```
+
+### Integration with @synet/proxy
+
+```typescript
+import { Http } from '@synet/http';
+import { ProxyUnit } from '@synet/proxy';
+
+// Create proxy unit with pool management
+const proxyUnit = ProxyUnit.create({
+  sources: [/* your proxy sources */]
+});
+
+await proxyUnit.init();
+
+// Get proxy from pool
+const proxy = await proxyUnit.get();
+
+// Use with HTTP unit
+const http = Http.create({ baseUrl: 'https://api.target.com' });
+const result = await http.request({
+  url: '/sensitive-data',
+  method: 'GET',
+  proxy  // Automatically handled by undici
+});
+```
+
+### Platform Support
+
+- **Node.js**: Full proxy support via undici (HTTP/SOCKS5)
+- **Browser**: Proxy handled by browser/OS settings
+- **Serverless**: Works with undici-compatible environments
+
+### Error Handling
+
+```typescript
+const result = await http.request({
+  url: '/api/data',
+  proxy: myProxy
+});
+
+if (result.isFailure) {
+  const error = result.error;
+  
+  // Check for proxy-specific errors
+  if (error.message.includes('407')) {
+    console.log('Proxy authentication failed');
+  } else if (error.message.includes('ECONNREFUSED')) {
+    console.log('Proxy connection refused');
+  }
+}
+```
+
 ## Unit Architecture Integration
 
 ### Teaching Capabilities
@@ -327,8 +429,9 @@ Works in all modern browsers with native fetch:
 ## Next Steps
 
 - See [MANUAL.md](./MANUAL.md) for advanced usage patterns
-- Check [examples/](./examples/) for real-world scenarios
-- Read about [Unit Architecture](../unit/README.md) for composition patterns
+- Check [demo/](./demo/) for demos real-world scenarios with proxy setup
+- See  [@synet/network](https://www.npmjs.com/package/@synet/network) for resilient network implementation
+- Read about [Unit Architecture](https://github.com/synthetism/unit) for composition patterns
 
 ## License
 

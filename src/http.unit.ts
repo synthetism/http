@@ -30,6 +30,7 @@ import {
   Validator
 } from '@synet/unit';
 
+import { request as Request, ProxyAgent } from 'undici';
 import { Result } from './result';
 
 // Doctrine #13: TYPE HIERARCHY CONSISTENCY (Config → Props → State → Output)
@@ -38,6 +39,19 @@ import { Result } from './result';
  * HTTP method types
  */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+
+/**
+ * Proxy connection configuration (from @synet/proxy)
+ */
+export interface ProxyConnection {
+  readonly id: string;
+  readonly host: string;
+  readonly port: number;
+  readonly username?: string;
+  readonly password?: string;
+  readonly protocol: 'http' | 'socks5';
+  readonly country?: string;
+}
 
 /**
  * External input configuration for static create()
@@ -72,6 +86,7 @@ export interface HttpRequest {
   readonly body?: string | object;
   readonly timeout?: number;
   readonly signal?: AbortSignal;
+  readonly proxy?: ProxyConnection;
 }
 
 /**
@@ -137,7 +152,11 @@ export class Http extends Unit<HttpProps> {
             method: { type: 'string', description: 'HTTP method', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] },
             headers: { type: 'object', description: 'Request headers' },
             body: { type: 'string', description: 'Request body' },
-            timeout: { type: 'number', description: 'Request timeout in ms' }
+            timeout: { type: 'number', description: 'Request timeout in ms' },
+            proxy: { 
+              type: 'object', 
+              description: 'Proxy connection configuration'
+            }
           },
           required: ['url']
         },
@@ -335,6 +354,7 @@ SUPPORTED FEATURES:
 • Base URL and path composition
 • HTTP status validation
 • Request/response timing
+• Proxy connection support (via ProxyConnection interface)
 
 USAGE EXAMPLES:
   const http = Http.create({
@@ -354,6 +374,19 @@ USAGE EXAMPLES:
   if (created.isSuccess) {
     console.log('Created:', created.value.response.status);
   }
+
+  // Request with proxy (from @synet/proxy)
+  const proxy = { 
+    id: 'proxy-1', 
+    host: 'proxy.example.com', 
+    port: 8080, 
+    protocol: 'http' as const 
+  };
+  const proxiedResult = await http.request({
+    url: '/api/data',
+    method: 'GET',
+    proxy
+  });
 
 LEARNING CAPABILITIES:
 Other units can learn from me:
@@ -527,7 +560,7 @@ I TEACH:
     return `${base}/${cleanPath}`;
   }
 
-  private buildRequestConfig(config: HttpRequest): RequestInit {
+  private buildRequestConfig(config: HttpRequest): RequestInit & { proxy?: ProxyConnection } {
     const headers = {
       ...this.props.defaultHeaders,
       ...config.headers
@@ -543,15 +576,22 @@ I TEACH:
       }
     }
 
-    return {
+    const requestConfig: RequestInit & { proxy?: ProxyConnection } = {
       method: config.method,
       headers,
       body,
       signal: config.signal
     };
+
+    // Include proxy configuration for potential consumption by proxy-aware HTTP clients
+    if (config.proxy) {
+      requestConfig.proxy = config.proxy;
+    }
+
+    return requestConfig;
   }
 
-  private async executeWithRetries(url: string, requestConfig: RequestInit): Promise<Response> {
+  private async executeWithRetries(url: string, requestConfig: RequestInit & { proxy?: ProxyConnection }): Promise<Response> {
     let lastError: Error | undefined;
     
     for (let attempt = 0; attempt <= this.props.retries; attempt++) {
@@ -559,11 +599,55 @@ I TEACH:
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.props.timeout);
         
-        const response = await fetch(url, {
-          ...requestConfig,
+        // Extract proxy from config
+        const { proxy, ...fetchOptions } = requestConfig;
+        
+        // Use undici for proxy requests, fetch for direct requests
+        let response: Response;
+        
+        if (proxy) {
+          
+          // For undici ProxyAgent, we need to handle HTTP proxy for HTTPS targets differently
+          // Build proxy URL without auth in the URL for undici
+          const proxyUrl = `${proxy.protocol}://${proxy.host}:${proxy.port}`;
+          
+          // Create proxy agent with auth options
+          const agent = new ProxyAgent({
+            uri: proxyUrl,
+            auth: proxy.username && proxy.password ? `${proxy.username}:${proxy.password}` : undefined
+          });
+          
+          // Use undici with proxy agent
+          const undiciResponse = await Request(url, {
+            method: fetchOptions.method,
+            headers: fetchOptions.headers as Record<string, string>,
+            body: typeof fetchOptions.body === 'string' ? fetchOptions.body : undefined,
+            signal: controller.signal,
+            dispatcher: agent
+          });
+          
+          // Convert undici response to fetch-compatible Response
+          const responseText = await undiciResponse.body.text();
+          
+          // Build headers object from undici headers
+          const responseHeaders: Record<string, string> = {};
+          for (const [key, value] of Object.entries(undiciResponse.headers)) {
+            responseHeaders[key] = Array.isArray(value) ? value.join(', ') : String(value || '');
+          }
+        
+          response = new Response(responseText, {
+            status: undiciResponse.statusCode,
+            statusText: String(undiciResponse.statusCode), // Simple status text
+            headers: responseHeaders
+          });
+          
+        } 
+          // Use native fetch for direct requests
+        response = await fetch(url, {
+          ...fetchOptions,
           signal: controller.signal
         });
-        
+      
         clearTimeout(timeoutId);
         return response;
       } catch (error) {
@@ -611,6 +695,10 @@ I TEACH:
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  get baseUrl(): string | undefined {
+    return this.props.baseUrl;
   }
 
   // Standard unit identification

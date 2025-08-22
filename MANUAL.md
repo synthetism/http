@@ -5,6 +5,7 @@ Comprehensive guide for advanced HTTP patterns, authentication strategies, and p
 ## Table of Contents
 
 - [Advanced Authentication](#advanced-authentication)
+- [Proxy Configuration](#proxy-configuration)
 - [Production Patterns](#production-patterns)
 - [Error Handling Strategies](#error-handling-strategies)
 - [Performance Optimization](#performance-optimization)
@@ -183,6 +184,394 @@ class RotatingAPIKeyClient {
 
     throw new Error('All API keys exhausted');
   }
+}
+```
+
+## Proxy Configuration
+
+### Overview
+
+The @synet/http unit provides comprehensive proxy support through undici integration for Node.js environments. This enables routing HTTP requests through proxy servers for anonymity, geo-location, load balancing, and security purposes.
+
+### Basic Proxy Setup
+
+```typescript
+import { Http, type ProxyConnection } from '@synet/http';
+
+// Define proxy connection
+const proxy: ProxyConnection = {
+  id: 'datacenter-proxy-1',
+  host: 'proxy.datacenter.com',
+  port: 8080,
+  username: 'proxy_user',
+  password: 'proxy_pass',
+  protocol: 'http',
+  country: 'us'
+};
+
+// Create HTTP unit
+const http = Http.create({
+  baseUrl: 'https://api.target.com',
+  timeout: 30000
+});
+
+// Make request through proxy
+const result = await http.request({
+  url: '/sensitive-endpoint',
+  method: 'GET',
+  proxy
+});
+```
+
+### Proxy Pool Management
+
+```typescript
+import { Http, type ProxyConnection } from '@synet/http';
+
+class ProxyRotator {
+  private proxies: ProxyConnection[];
+  private currentIndex = 0;
+
+  constructor(proxies: ProxyConnection[]) {
+    this.proxies = proxies;
+  }
+
+  getNextProxy(): ProxyConnection {
+    const proxy = this.proxies[this.currentIndex];
+    this.currentIndex = (this.currentIndex + 1) % this.proxies.length;
+    return proxy;
+  }
+
+  async makeRequest(http: Http, url: string, data?: any) {
+    let lastError: Error | null = null;
+    
+    // Try each proxy once
+    for (let i = 0; i < this.proxies.length; i++) {
+      const proxy = this.getNextProxy();
+      
+      try {
+        const result = await http.request({
+          url,
+          method: data ? 'POST' : 'GET',
+          body: data,
+          proxy,
+          timeout: 15000
+        });
+        
+        if (result.isSuccess()) {
+          return result;
+        }
+        
+        lastError = new Error(result.getError());
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`Proxy ${proxy.id} failed:`, error.message);
+      }
+    }
+    
+    throw new Error(`All proxies failed. Last error: ${lastError?.message}`);
+  }
+}
+
+// Usage
+const proxyRotator = new ProxyRotator([
+  { id: 'proxy-1', host: 'proxy1.com', port: 8080, protocol: 'http' },
+  { id: 'proxy-2', host: 'proxy2.com', port: 1080, protocol: 'socks5' },
+  { id: 'proxy-3', host: 'proxy3.com', port: 3128, protocol: 'http' }
+]);
+
+const http = Http.create({ baseUrl: 'https://api.example.com' });
+const result = await proxyRotator.makeRequest(http, '/data');
+```
+
+### Geo-Location Proxy Routing
+
+```typescript
+interface GeoProxy extends ProxyConnection {
+  country: string;
+  region?: string;
+  city?: string;
+  speed: 'fast' | 'medium' | 'slow';
+}
+
+class GeoProxyManager {
+  private proxiesByCountry: Map<string, GeoProxy[]> = new Map();
+
+  constructor(proxies: GeoProxy[]) {
+    for (const proxy of proxies) {
+      const countryProxies = this.proxiesByCountry.get(proxy.country) || [];
+      countryProxies.push(proxy);
+      this.proxiesByCountry.set(proxy.country, countryProxies);
+    }
+  }
+
+  getProxyForCountry(country: string, speed: 'fast' | 'medium' | 'slow' = 'fast'): GeoProxy | null {
+    const countryProxies = this.proxiesByCountry.get(country.toLowerCase());
+    if (!countryProxies) return null;
+
+    // Filter by speed preference
+    const filtered = countryProxies.filter(p => p.speed === speed);
+    if (filtered.length === 0) return countryProxies[0]; // Fallback
+
+    // Return random proxy from filtered list
+    return filtered[Math.floor(Math.random() * filtered.length)];
+  }
+
+  async requestFromCountry(http: Http, url: string, country: string) {
+    const proxy = this.getProxyForCountry(country);
+    if (!proxy) {
+      throw new Error(`No proxy available for country: ${country}`);
+    }
+
+    return http.request({
+      url,
+      method: 'GET',
+      proxy
+    });
+  }
+}
+
+// Usage
+const geoManager = new GeoProxyManager([
+  { id: 'us-east-1', host: 'us-proxy.com', port: 8080, protocol: 'http', country: 'us', region: 'east', speed: 'fast' },
+  { id: 'eu-west-1', host: 'eu-proxy.com', port: 8080, protocol: 'http', country: 'de', region: 'west', speed: 'fast' },
+  { id: 'asia-1', host: 'asia-proxy.com', port: 8080, protocol: 'http', country: 'sg', speed: 'medium' }
+]);
+
+const http = Http.create({ baseUrl: 'https://geo-restricted-api.com' });
+const result = await geoManager.requestFromCountry(http, '/us-only-endpoint', 'us');
+```
+
+### SOCKS5 Proxy Configuration
+
+```typescript
+// SOCKS5 proxy with authentication
+const socksProxy: ProxyConnection = {
+  id: 'socks5-tunnel',
+  host: 'socks5.example.com',
+  port: 1080,
+  username: 'socks_user',
+  password: 'socks_pass',
+  protocol: 'socks5',
+  country: 'nl'
+};
+
+// Usage with SOCKS5
+const http = Http.create({
+  baseUrl: 'https://api.example.com'
+});
+
+const result = await http.request({
+  url: '/secure-data',
+  method: 'GET',
+  proxy: socksProxy,
+  headers: {
+    'User-Agent': 'MyApp/1.0'
+  }
+});
+```
+
+### Proxy Health Monitoring
+
+```typescript
+class ProxyHealthMonitor {
+  private healthyProxies: Set<string> = new Set();
+  private failedProxies: Map<string, number> = new Map();
+  private readonly maxFailures = 3;
+
+  async checkProxyHealth(proxy: ProxyConnection): Promise<boolean> {
+    const http = Http.create({
+      baseUrl: 'https://httpbin.org' // Public testing service
+    });
+
+    try {
+      const result = await http.request({
+        url: '/ip',
+        method: 'GET',
+        proxy,
+        timeout: 10000
+      });
+
+      if (result.isSuccess()) {
+        this.markHealthy(proxy.id);
+        return true;
+      } else {
+        this.markFailed(proxy.id);
+        return false;
+      }
+    } catch (error) {
+      this.markFailed(proxy.id);
+      return false;
+    }
+  }
+
+  private markHealthy(proxyId: string): void {
+    this.healthyProxies.add(proxyId);
+    this.failedProxies.delete(proxyId);
+  }
+
+  private markFailed(proxyId: string): void {
+    this.healthyProxies.delete(proxyId);
+    const failures = (this.failedProxies.get(proxyId) || 0) + 1;
+    this.failedProxies.set(proxyId, failures);
+  }
+
+  isProxyHealthy(proxyId: string): boolean {
+    const failures = this.failedProxies.get(proxyId) || 0;
+    return failures < this.maxFailures;
+  }
+
+  getHealthyProxies(proxies: ProxyConnection[]): ProxyConnection[] {
+    return proxies.filter(proxy => this.isProxyHealthy(proxy.id));
+  }
+
+  async runHealthCheck(proxies: ProxyConnection[]): Promise<void> {
+    const checks = proxies.map(proxy => this.checkProxyHealth(proxy));
+    await Promise.allSettled(checks);
+  }
+}
+
+// Usage
+const monitor = new ProxyHealthMonitor();
+const proxies: ProxyConnection[] = [
+  { id: 'proxy-1', host: 'proxy1.com', port: 8080, protocol: 'http' },
+  { id: 'proxy-2', host: 'proxy2.com', port: 8080, protocol: 'http' }
+];
+
+// Check health before using
+await monitor.runHealthCheck(proxies);
+const healthyProxies = monitor.getHealthyProxies(proxies);
+```
+
+### Error Handling and Fallbacks
+
+```typescript
+class RobustProxyClient {
+  constructor(
+    private http: Http,
+    private proxies: ProxyConnection[],
+    private monitor: ProxyHealthMonitor
+  ) {}
+
+  async makeRobustRequest(url: string, options: any = {}) {
+    const healthyProxies = this.monitor.getHealthyProxies(this.proxies);
+    
+    if (healthyProxies.length === 0) {
+      // Fallback to direct connection
+      console.warn('No healthy proxies available, using direct connection');
+      return this.http.request({
+        url,
+        method: 'GET',
+        ...options
+      });
+    }
+
+    // Try proxies in order of preference
+    for (const proxy of healthyProxies) {
+      try {
+        const result = await this.http.request({
+          url,
+          method: 'GET',
+          proxy,
+          timeout: 15000,
+          ...options
+        });
+
+        if (result.isSuccess()) {
+          return result;
+        }
+
+        // Mark proxy as potentially unhealthy on failure
+        this.monitor.markFailed(proxy.id);
+        
+      } catch (error) {
+        console.warn(`Proxy ${proxy.id} failed:`, error.message);
+        this.monitor.markFailed(proxy.id);
+      }
+    }
+
+    // All proxies failed, try direct connection as last resort
+    console.warn('All proxies failed, attempting direct connection');
+    return this.http.request({
+      url,
+      method: 'GET',
+      ...options
+    });
+  }
+}
+```
+
+### Integration with @synet/proxy Unit
+
+```typescript
+import { Http } from '@synet/http';
+import { ProxyUnit } from '@synet/proxy';
+
+// Create proxy unit with automatic pool management
+const proxyUnit = ProxyUnit.create({
+  sources: [
+    {
+      type: 'datacenter',
+      endpoint: 'https://proxy-provider.com/api/proxies',
+      apiKey: 'your-api-key'
+    }
+  ],
+  rotation: {
+    strategy: 'round-robin',
+    interval: 60000 // 1 minute
+  },
+  health: {
+    checkInterval: 30000, // 30 seconds
+    maxFailures: 3
+  }
+});
+
+await proxyUnit.init();
+
+// Use with HTTP unit
+const http = Http.create({
+  baseUrl: 'https://api.target.com'
+});
+
+// Get proxy from managed pool
+const proxy = await proxyUnit.getProxy();
+
+const result = await http.request({
+  url: '/data',
+  method: 'GET',
+  proxy
+});
+
+// Release proxy back to pool
+await proxyUnit.releaseProxy(proxy.id);
+```
+
+### Platform-Specific Behavior
+
+```typescript
+// Node.js - Full proxy support via undici
+if (typeof window === 'undefined') {
+  // Proxy support available
+  const result = await http.request({
+    url: '/api/data',
+    proxy: myProxy // Will use undici ProxyAgent
+  });
+}
+
+// Browser - Proxy handled by browser/OS
+if (typeof window !== 'undefined') {
+  // Proxy configuration ignored, uses browser proxy settings
+  const result = await http.request({
+    url: '/api/data',
+    proxy: myProxy // Ignored in browser
+  });
+}
+
+// Cloudflare Workers - Limited proxy support
+// Check environment and adjust accordingly
+const isCloudflareWorker = typeof caches !== 'undefined';
+if (isCloudflareWorker) {
+  // Use Cloudflare's proxy capabilities if needed
 }
 ```
 
