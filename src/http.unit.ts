@@ -30,7 +30,7 @@ import {
   Validator
 } from '@synet/unit';
 
-import { request as Request, ProxyAgent } from 'undici';
+import axios, { type AxiosError } from 'axios';
 import { Result } from './result';
 
 // Doctrine #13: TYPE HIERARCHY CONSISTENCY (Config → Props → State → Output)
@@ -113,7 +113,7 @@ export interface RequestResult {
   readonly timestamp: Date;
 }
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.3';
 /**
  * HTTP Implementation
  * 
@@ -450,6 +450,28 @@ I TEACH:
 
       return Result.success(result);
     } catch (error) {
+      // Enhanced error handling to distinguish between network and HTTP errors
+      if (error instanceof Error && 'isAxiosError' in error && error.isAxiosError) {
+        const axiosError = error as AxiosError;
+        
+        if (axiosError.response) {
+          // HTTP error with response (4xx, 5xx)
+          return Result.fail(
+            `HTTP ${axiosError.response.status}: ${axiosError.response.statusText || axiosError.message}`,
+            error
+          );
+        }
+        
+        if (axiosError.code) {
+          // Network error (ENOTFOUND, ECONNREFUSED, etc.)
+          return Result.fail(
+            `Network error ${axiosError.code}: ${axiosError.message}`,
+            error
+          );
+        }
+      }
+      
+      // Fallback for other types of errors
       return Result.fail(
         `HTTP request failed: ${error instanceof Error ? error.message : String(error)}`,
         error
@@ -596,72 +618,69 @@ I TEACH:
     
     for (let attempt = 0; attempt <= this.props.retries; attempt++) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.props.timeout);
-        
         // Extract proxy from config
         const { proxy, ...fetchOptions } = requestConfig;
         
-        // Use undici for proxy requests, fetch for direct requests
-        let response: Response;
-        
-        if (proxy) {
-          
-          // For undici ProxyAgent, we need to handle HTTP proxy for HTTPS targets differently
-          // Build proxy URL without auth in the URL for undici
-          const proxyUrl = `${proxy.protocol}://${proxy.host}:${proxy.port}`;
-          
-          // Create proxy agent with auth options
-          const agent = new ProxyAgent({
-            uri: proxyUrl,
-            auth: proxy.username && proxy.password ? `${proxy.username}:${proxy.password}` : undefined
-          });
-          
-          // Use undici with proxy agent
-          const undiciResponse = await Request(url, {
-            method: fetchOptions.method,
-            headers: fetchOptions.headers as Record<string, string>,
-            body: typeof fetchOptions.body === 'string' ? fetchOptions.body : undefined,
-            signal: controller.signal,
-            dispatcher: agent
-          });
-          
-          // Convert undici response to fetch-compatible Response
-          const responseText = await undiciResponse.body.text();
-          
-          // Build headers object from undici headers
-          const responseHeaders: Record<string, string> = {};
-          for (const [key, value] of Object.entries(undiciResponse.headers)) {
-            responseHeaders[key] = Array.isArray(value) ? value.join(', ') : String(value || '');
-          }
-        
-          response = new Response(responseText, {
-            status: undiciResponse.statusCode,
-            statusText: String(undiciResponse.statusCode), // Simple status text
-            headers: responseHeaders
-          });
-          
-        } 
-          // Use native fetch for direct requests
-        response = await fetch(url, {
-          ...fetchOptions,
-          signal: controller.signal
+        // Use axios for better error handling and proxy support
+        const axiosResponse = await axios({
+          url: url,
+          method: fetchOptions.method as string,
+          headers: fetchOptions.headers as Record<string, string>,
+          data: fetchOptions.body,
+          timeout: this.props.timeout,
+          signal: fetchOptions.signal || undefined,
+          proxy: proxy ? {
+            protocol: proxy.protocol,
+            host: proxy.host,
+            port: proxy.port,
+            auth: proxy.username && proxy.password ? {
+              username: proxy.username,
+              password: proxy.password
+            } : undefined
+          } : false,
+          validateStatus: () => true // Accept all status codes - let our validateStatus handle it
         });
-      
-        clearTimeout(timeoutId);
+        
+        // Convert axios response to fetch-compatible Response
+        const responseText = typeof axiosResponse.data === 'string' ? 
+          axiosResponse.data : JSON.stringify(axiosResponse.data);
+        
+        const response = new Response(responseText, {
+          status: axiosResponse.status,
+          statusText: axiosResponse.statusText,
+          headers: new Headers(axiosResponse.headers as Record<string, string>)
+        });
+        
         return response;
+        
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         
-        if (attempt < this.props.retries) {
-          // Exponential backoff: 100ms, 200ms, 400ms, etc.
-          const delay = 100 * 2 ** attempt;
-          await new Promise(resolve => setTimeout(resolve, delay));
+        // Enhanced proxy error handling with axios
+        if (axios.isAxiosError(error)) {
+          // Just let the axios error bubble up with all original headers
+          throw error;
         }
+        
+        // If this isn't the last attempt, wait before retrying
+        if (attempt < this.props.retries) {
+          await this.delay(1000 * (attempt + 1)); // Exponential backoff
+          continue;
+        }
+        
+        // All retries exhausted
+        break;
       }
     }
     
-    throw lastError || new Error('HTTP request failed after retries');
+    throw lastError || new Error('Request failed after all retries');
+  }
+
+  /**
+   * Delay utility for retry backoff
+   */
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async buildHttpResponse(url: string, response: Response, startTime: number): Promise<HttpResponse> {

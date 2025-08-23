@@ -9,7 +9,7 @@
    \ \_\ \_\ \ \_\   \ \_\ \ \_\           \ \_____\ \_\ \_\ \_\ \__\
     \/_/\/_/  \/_/    \/_/  \/_/            \/_____/\/_/\/_/\/_/\/__/
                                                                                   
-version: 1.0.2                                                   
+version: 1.0.3                                                   
 ```
 
 Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Built for both Unit-based composition and serverless deployment.
@@ -22,7 +22,7 @@ Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Bui
 - **Result Pattern** - Explicit error handling for complex operations
 - **Pure Functions** - Serverless-ready stateless operations
 - **Built-in Retry** - Exponential backoff retry logic
-- **Proxy Support** - HTTP/SOCKS5 proxy via undici (Node.js) 
+- **Proxy Support** - HTTP/SOCKS5 proxy via axios (Node.js) 
 - **Multiple Patterns** - Unit Architecture + Pure Functions
 
 ## Quick Start
@@ -205,7 +205,7 @@ const response = await retryRequest(
 
 ## Proxy Support
 
-**New in v1.0.2** - Full HTTP/SOCKS5 proxy support via undici integration.
+**New in v1.0.2** - Full HTTP/SOCKS5 proxy support via axios integration.
 
 ### Basic Proxy Usage
 
@@ -275,15 +275,15 @@ const http = Http.create({ baseUrl: 'https://api.target.com' });
 const result = await http.request({
   url: '/sensitive-data',
   method: 'GET',
-  proxy  // Automatically handled by undici
+  proxy  // Automatically handled by axios
 });
 ```
 
 ### Platform Support
 
-- **Node.js**: Full proxy support via undici (HTTP/SOCKS5)
+- **Node.js**: Full proxy support via axios (HTTP/SOCKS5)
 - **Browser**: Proxy handled by browser/OS settings
-- **Serverless**: Works with undici-compatible environments
+- **Serverless**: Works with axios-compatible environments
 
 ### Error Handling
 

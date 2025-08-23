@@ -96,47 +96,6 @@ async function main() {
       }
     } else {
       console.log('❌ Proxied request failed:', proxiedResult.error);
-      
-      // For 407 errors, make a direct request to the proxy to get headers
-      if (proxiedResult.error.includes('407')) {
-        console.log('🔍 Attempting to capture proxy response headers...');
-        
-        try {
-          // Make a low-level request to capture the actual proxy response
-          const { request: Request, ProxyAgent } = await import('undici');
-          
-          const proxyUrl = `${proxyConnection.protocol}://${proxyConnection.host}:${proxyConnection.port}`;
-          const agent = new ProxyAgent({
-            uri: proxyUrl,
-            auth: proxyConnection.username && proxyConnection.password ? 
-              `${proxyConnection.username}:${proxyConnection.password}` : undefined
-          });
-          
-          // This will likely fail with 407, but we can catch the response
-          try {
-            await Request('https://httpbin.org/ip', {
-              method: 'GET',
-              dispatcher: agent
-            });
-          } catch (undiciError: unknown) {
-            const error = undiciError as Error;
-            console.log('   Raw undici error:', error.message);
-       
-          }
-        } catch (importError) {
-          console.log('   Could not import undici for direct inspection');
-        }
-      }
-      
-      // Enhanced proxy diagnostics
-      console.log('🔧 Proxy Configuration Analysis:');
-      console.log(`   Endpoint: ${proxyConnection.protocol}://${proxyConnection.host}:${proxyConnection.port}`);
-      console.log(`   Authentication: ${proxyConnection.username ? '✅ Username provided' : '❌ No username'}`);
-      console.log(`   Password: ${proxyConnection.password ? '✅ Password provided' : '❌ No password'}`);
-      console.log(`   Country: ${proxyConnection.country || '❓ Unspecified'}`);
-      console.log(`   Proxy ID: ${proxyConnection.id}`);
-
-    
     }
 
     console.log();
