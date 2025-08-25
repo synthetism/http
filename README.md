@@ -9,7 +9,7 @@
    \ \_\ \_\ \ \_\   \ \_\ \ \_\           \ \_____\ \_\ \_\ \_\ \__\
     \/_/\/_/  \/_/    \/_/  \/_/            \/_____/\/_/\/_/\/_/\/__/
                                                                                   
-version: 1.0.4                                                   
+version: 1.0.5                 
 ```
 
 Modern, Unit Architecture-compliant HTTP client for TypeScript applications. Built for both Unit-based composition and serverless deployment.
