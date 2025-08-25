@@ -1,6 +1,6 @@
 {
   "name": "@synet/http",
-  "version": "1.0.4-dev.0",
+  "version": "1.0.5",
   "description": "Modern, HTTP client with proxy support and events",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,6 +12,12 @@
     "type": "git",
     "url": "git+https://github.com/synthetism/http.git"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "CONTRIBUTING.md",
+    "MANUAL.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

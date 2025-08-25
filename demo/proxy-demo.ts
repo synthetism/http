@@ -56,6 +56,8 @@ async function main() {
     console.log('🔗 Testing request with proxy to verify IP change...');
     
     // Request with proxy to test IP change
+
+     for (let i = 1; i <= 3; i++) {
     const proxiedResult = await http.request({
       url: '/ip',
       method: 'GET',
@@ -95,8 +97,27 @@ async function main() {
         console.log(`     ${key}: ${value}`);
       }
     } else {
-      console.log('❌ Proxied request failed:', proxiedResult.error);
+      console.log(`❌ Proxied request ${i}/3 failed:`, proxiedResult.error);
+      console.log(proxiedResult);
+     // console.log('   Proxy used:', `${proxyConnection.host}:${proxyConnection.port}`);
+      // Enhanced error debugging - access the axios error through errorCause
+      const axiosError = proxiedResult.errorCause as { isAxiosError?: boolean; response?: { status: number; statusText: string; headers: Record<string, string>; data?: unknown } };
+      if (axiosError?.isAxiosError && axiosError.response) {
+        console.log('   🔍 Full 407 Response Details:');
+        console.log('     Status:', axiosError.response.status);
+        console.log('     Status Text:', axiosError.response.statusText);
+        console.log('     Headers:');
+        for (const [key, value] of Object.entries(axiosError.response.headers)) {
+          console.log(`       ${key}: ${value}`);
+        }
+        if (axiosError.response.data) {
+          console.log('     Response Body:', typeof axiosError.response.data === 'string' ? 
+            axiosError.response.data.substring(0, 300) : JSON.stringify(axiosError.response.data).substring(0, 300));
+        }
+      }
+      
     }
+   }
 
     console.log();
     console.log('Proxy Connection Details:');
