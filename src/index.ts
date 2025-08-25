@@ -18,7 +18,8 @@ export type {
   HttpRequest,
   HttpResponse,
   RequestResult,
-  HttpMethod
+  HttpMethod,
+  ProxyConnection
 } from './http.unit.js';
 
 // Result Pattern
